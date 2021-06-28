@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 class DottedDict(dict):
 	def __setitem__(self, key, item, *args, **kwargs):
 		if '.' in key[1:-1]:
@@ -8,7 +10,7 @@ class DottedDict(dict):
 					d.__setitem__(name, item, *args, **kwargs)
 				else:
 					if name not in d:
-						super().__setitem__(name, DottedDict())
+						d.__setitem__(name, DottedDict())
 					d = d[name]
 		else:
 			super().__setitem__(key, item, *args, **kwargs)
@@ -46,3 +48,20 @@ class DottedDict(dict):
 			return d
 		else:
 			return super().__getitem__(key, *args, **kwargs)
+
+class DottedProperties(ABC):
+	def __init__(self, *args, **kwargs):
+		self._ddict = DottedDict()
+		super().__init__(*args, **kwargs)
+
+	def property(self, namespace: str, *args, **kwargs):
+		if args:
+			if args[0] is None:
+				del self._ddict[namespace]
+			else:
+				self._ddict[namespace] = args[0]
+		else:
+			return self._ddict[namespace]
+
+	def prop(self, *args, **kwargs):
+		return self.property(*args, **kwargs)
