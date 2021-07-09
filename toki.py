@@ -1,68 +1,90 @@
 from contextlib import suppress
 from functools import partial
-#from enum import Enum
-
+from pyotp import TOTP
+from threading import Thread
+from time import sleep, time
 import tkinter as tk
 from tkinter import ttk, messagebox, StringVar
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union, Tuple
 
+from toki.events import EventSystem, GlobalEvents
 from toki.prop_helpers import NestedPropertiesDict
 from toki.keyfile import CanNotDecrypt, KeyFile
-from toki.ui import RootEvents
 from toki.util import first
 
 DEFAULT_KEYFILE = './.otp.keys'
 
-class TkEvent:
-    PASSWORD = '<<Password>>'
-    TOTP_SELECTED = '<<Totp_Selected>>'
+class Event:
+    PASSWORD = '<<PASSWORD>>'
+    TOTP_LIST = '<<TOTP_LIST>>'
+    TOTP_SELECTED = '<<TOTP_SELECTED>>'
+    TOTP_UPDATE = '<<TOTP_UPDATE>>'
+    TIMER_UPDATE = '<<TIMER_UPDATE>>'
+    MENU_ADD_TOTP = '<<MENU_FILE_ADD_TOTP>>'
+    MENU_EXIT = '<<MENU_FILE_EXIT>>'
 
-    class MENU:
-        class FILE:
-            TEST = '<<MENU_FILE_ADD_TOTP>>'
-            EXIT = '<<MENU_FILE_EXIT>>'
-
-ListTotpsFunc = Callable[[Any, str], List]
-TotpFunc = Callable[[Any, str], str]
-
-class Application:
+class Application(GlobalEvents):
     def __init__(self):
-        self.totps = []
+        self.totps = {}
+        self.current_totp_name = None
+        self.events = EventSystem()
+        self.event_subscribe(Event.PASSWORD, self._on_password)
+        self.event_subscribe(Event.TOTP_SELECTED, self._totp_selected)
+        self.event_subscribe(Event.MENU_EXIT, self.exit)
+        self.ui = UI()
+        self.ui.title(f"Toki")
+        self.ui.geometry("256x384")
+        self.running = True
+        self._timer_thread = Thread(None, self._timer_thread, daemon=True)
+        self._timer_thread.start()
 
-        self._ui = UI()
-        self._ui.title(f"Toki")
-        self._ui.geometry("256x384")
-        self._ui.set_list_totps_func(self.read_totps_file)
-        self._ui.set_totp_func(self.get_totp_secret)
+    def _timer_thread(self) -> None:
+        while self.running:
+            if (time() % 30) < 1.0:
+                self.event_publish(Event.TOTP_UPDATE, (self.current_totp_name, self.totps[self.current_totp_name].now()))
+            self.event_publish(Event.TIMER_UPDATE, time() % 30 / 30)
+            sleep(0.2)
 
-    def start(self):
-        self._ui.mainloop()
+    def _on_password(self, password: str) -> None:
+        if self.load_totps_file(password):
+            self.event_publish(Event.TOTP_LIST, list(self.totps.keys()))
+            self._totp_selected(first(self.totps))
 
-    def read_totps_file(self, password: str) -> List:
+    def _totp_selected(self, name: str) -> None:
+        if name in self.totps:
+            totp = self.totps[name]
+            self.current_totp_name = name
+            self.event_publish(Event.TOTP_UPDATE, (name, totp.now()))
+
+    def start(self) -> None:
+        self.ui.mainloop()
+
+    def exit(self, *args, **kwargs) -> None:
+        self.ui.destroy()
+        self.running = False
+        self.events.stop()
+        exit()
+
+    def load_totps_file(self, password: str) -> bool:
         keyfile = KeyFile(DEFAULT_KEYFILE, password, create_file=False)
         try:
             totps = keyfile.read_keys()
-            self.totps = totps
-            return totps.keys()
+            self.totps = {name:TOTP(totp) for name, totp in totps.items()}
+            return True
         except CanNotDecrypt:
             return False
 
-    def get_totp_secret(self, name: str) -> str:
-        return self.totps.get(name, None)
-
-class UI(tk.Tk):
-    class _MenuBar(tk.Menu, RootEvents):
+class UI(tk.Tk, GlobalEvents):
+    class _MenuBar(tk.Menu, GlobalEvents):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             print('creating menus')
             filemenu = tk.Menu(self, tearoff=0)
-            filemenu.add_command(label="Add TOTP", command=self.event_generate_func(TkEvent.MENU.FILE.TEST))
+            filemenu.add_command(label="Add TOTP", command=lambda: self.event_publish(Event.MENU_TEST))
             filemenu.add_separator()
-            filemenu.add_command(label="Exit", command=self.event_generate_func(TkEvent.MENU.FILE.EXIT))
+            filemenu.add_command(label="Exit", command=lambda: self.event_publish(Event.MENU_EXIT))
             self.add_cascade(label="File", menu=filemenu)
 
-        def event_generate_func(self, event_name):
-            return lambda: self.root_event_generate(event_name, when='tail')
 
     def __init__(self, *args, **kwargs):
         print('creating main window')
@@ -76,7 +98,6 @@ class UI(tk.Tk):
     def _init_menus(self):
         self._ui.menu = __class__._MenuBar(self)
         self.config(menu=self._ui.menu)
-        self.bind(TkEvent.MENU.FILE.EXIT, lambda e: self.destroy())
 
     def _init_frames(self):
         container = ttk.Frame(self)
@@ -85,33 +106,13 @@ class UI(tk.Tk):
         self._ui.container = container
         self._ui.frame.password = PasswordFrame(container)
         self._ui.frame.totps = TotpsFrame(container)
-        self._ui.var.password = StringVar()
-        #self._ui.var.password.trace('w', self._onPassword)
-        self._ui.frame.password.set_password_var(self._ui.var.password)
         self._show_frame(self._ui.frame.password)
 
     def _init_events(self):
-        self.bind(TkEvent.PASSWORD, self._on_password)
-        self.bind(TkEvent.TOTP_SELECTED, self._on_totp_selected)
+        self.event_subscribe(Event.TOTP_LIST, self._totp_list)
 
-    def set_list_totps_func(self, func: ListTotpsFunc) -> None:
-        self._func.list_totps = func
-
-    def set_totp_func(self, func: TotpFunc) -> None:
-        self._func.totp = func
-
-    def _on_password(self, *args, **kwargs):
-        if not callable(self._func.list_totps):
-            return
-
-        names = self._func.list_totps(self._ui.var.password.get())
-        if names:
-            self._show_frame(self._ui.frame.totps)
-            self._ui.frame.totps.set_totps(names)
-
-    def _on_totp_selected(self, *args, **kwargs):
-        name = self._ui.frame.totps.get_selected_totp_name()
-        print(name)
+    def _totp_list(self, *args, **kwargs):
+        self._show_frame(self._ui.frame.totps)
 
     def _show_frame(self, frame:ttk.Frame):
         for f in self._ui.frame.values():
@@ -125,19 +126,17 @@ class UI(tk.Tk):
     def menu(self, *args, **kwargs):
         print(args, kwargs)
 
-class PasswordFrame(ttk.Frame):
+class PasswordFrame(ttk.Frame, GlobalEvents):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ui = NestedPropertiesDict()
+        self._ui.var.password = StringVar()
         self._ui.password.label = ttk.Label(self, font=('TkDefaultFont', 20), text="Unlock")
         self._ui.password.label.pack(pady=8)
-        self._ui.password.entry = ttk.Entry(self, font=('TkDefaultFont', 20), justify=tk.CENTER, show="*", width=12)
-        self._ui.password.entry.bind('<Return>', lambda e: self.event_generate(TkEvent.PASSWORD, when='tail'))
+        self._ui.password.entry = ttk.Entry(self, font=('TkDefaultFont', 20), justify=tk.CENTER, show="*", width=12, textvariable=self._ui.var.password)
+        self._ui.password.entry.bind('<Return>', lambda e: self.event_publish(Event.PASSWORD, self._ui.var.password.get()))
         self._ui.password.entry.pack(padx=8, pady=8)
         self._ui.password.entry.focus_set()
-
-    def set_password_var(self, var: tk.StringVar) -> None:
-        self._ui.password.entry['textvariable'] = var
 
     def show(self):
         self.place(relx=0.5, rely=0.45, anchor=tk.CENTER)
@@ -145,7 +144,7 @@ class PasswordFrame(ttk.Frame):
     def hide(self):
         self.place_forget()
 
-class TotpsFrame(tk.Frame, RootEvents):
+class TotpsFrame(tk.Frame, GlobalEvents):
     SELECTED_BG = '#aaffaa'
 
     def __init__(self, *args, **kwargs):
@@ -157,7 +156,7 @@ class TotpsFrame(tk.Frame, RootEvents):
         self._ui.totp.name.label.pack(pady=8, anchor=tk.CENTER)
         self._ui.totp.token.label = ttk.Label(self._ui.totp.frame, font=('Courier', 48, 'bold'), text="123456")
         self._ui.totp.token.label.pack(pady=4)
-        self._ui.totp.progress = ttk.Progressbar(self._ui.totp.frame, maximum=300)
+        self._ui.totp.progress = ttk.Progressbar(self._ui.totp.frame, maximum=100)
         self._ui.totp.progress.pack(fill=tk.X, padx=8, pady=4)
         #self._ui.totp.progress.start(interval=100)
 
@@ -165,7 +164,11 @@ class TotpsFrame(tk.Frame, RootEvents):
         self._ui.list.frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         self._ui.list.labels = []
 
-    def set_totps(self, totps: List) -> None:
+        self.event_subscribe(Event.TOTP_LIST, self.set_totp_list)
+        self.event_subscribe(Event.TOTP_UPDATE, self.update_totp)
+        self.event_subscribe(Event.TIMER_UPDATE, self.update_timer)
+
+    def set_totp_list(self, totps: List) -> None:
         self.totps = totps
         for l in self._ui.list.labels:
             l.destroy()
@@ -182,12 +185,16 @@ class TotpsFrame(tk.Frame, RootEvents):
             if l['text'] == name:
                 l['background'] = self.SELECTED_BG
 
-    def get_selected_totp_name(self):
-        return first([w for w in self._ui.list.labels if str(w['background']) == self.SELECTED_BG])['text']
+    def update_totp(self, totp: Tuple[str, TOTP]) -> None:
+        self._ui.totp.name.label['text'] = totp[0]
+        self._ui.totp.token.label['text'] = totp[1]
+
+    def update_timer(self, percent: float) -> None:
+        self._ui.totp.progress['value'] = percent * 100.0
 
     def _totp_clicked(self, name: str, event: tk.Event) -> None:
         self.select_totp(name)
-        self.event_generate(TkEvent.TOTP_SELECTED, when='tail')
+        self.event_publish(Event.TOTP_SELECTED, name)
 
     def show(self) -> None:
         self.pack(fill=tk.BOTH, expand=True)

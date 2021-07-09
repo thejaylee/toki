@@ -2,6 +2,8 @@ from abc import ABC
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from toki.events import EventSystem
+
 class VarsFrame(tk.Frame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
