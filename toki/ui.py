@@ -68,11 +68,14 @@ class _MenuBar(tk.Menu):
         self.menu.totp = tk.Menu(self, tearoff=0)
         self.menu.totp.add_command(label="Add", command=lambda: self.events.publish(Event.MENU_ADD_TOTP))
         self.menu.totp.entryconfig("Add", state=tk.DISABLED)
+        self.menu.totp.add_command(label="Show", command=lambda: self.events.publish(Event.MENU_SHOW_TOTP))
+        self.menu.totp.entryconfig("Show", state=tk.DISABLED)
         self.menu.totp.add_command(label="Remove", command=lambda: self.events.publish(Event.MENU_REMOVE_TOTP))
         self.menu.totp.entryconfig("Remove", state=tk.DISABLED)
         self.add_cascade(label="File", menu=self.menu.file)
         self.add_cascade(label="TOTP", menu=self.menu.totp)
         self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Add", state=tk.NORMAL))
+        self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Show", state=tk.NORMAL))
         self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Remove", state=tk.NORMAL))
 
 
@@ -120,6 +123,7 @@ class _TotpsFrame(tk.Frame):
         self.events.subscribe(Event.TOTP_UPDATE, self.update_totp)
         self.events.subscribe(Event.TIMER_UPDATE, self.update_timer)
         self.events.subscribe(Event.MENU_REMOVE_TOTP, self.handle_menu_remove_totp)
+        self.events.subscribe(Event.SHOW_TOTP, self.handle_show_totp)
 
     def set_totp_list(self, totps: List) -> None:
         self.totps = totps
@@ -146,10 +150,13 @@ class _TotpsFrame(tk.Frame):
     def update_timer(self, percent: float) -> None:
         self._ui.totp.progress['value'] = percent * 100.0
 
-    def handle_menu_remove_totp(self, *args, **kwargs):
+    def handle_menu_remove_totp(self, *args, **kwargs) -> None:
         totp_name = first([w['text'] for w in self._ui.list.labels if str(w['background']) == self.SELECTED_BG])
         if messagebox.askyesno(title="Delete TOTP", message=f'Delete "{totp_name}", are you sure? This can not be undone!'):
             self.events.publish(Event.REMOVE_TOTP, totp_name)
+
+    def handle_show_totp(self, totp: Tuple[str, str], *args, **kwargs) -> None:
+        messagebox.showinfo(title=f"{totp[0]}", message=totp[1])
 
     def _totp_clicked(self, name: str, event: tk.Event) -> None:
         self.select_totp(name)
