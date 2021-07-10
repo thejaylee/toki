@@ -4,7 +4,7 @@ A very simple app for managing Time-Based One Time Pads (TOTP)
 ## Usage
 ```
 pip install -r requirements.txt
-python3 toki.py
+python3 toki.pyw
 ```
 
 ## Running
