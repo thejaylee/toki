@@ -67,16 +67,15 @@ class _MenuBar(tk.Menu):
         self.menu.file.add_command(label="Exit", command=lambda: self.events.publish(Event.MENU_EXIT))
         self.menu.totp = tk.Menu(self, tearoff=0)
         self.menu.totp.add_command(label="Add", command=lambda: self.events.publish(Event.MENU_ADD_TOTP))
-        self.menu.totp.entryconfig("Add", state=tk.DISABLED)
+        self.menu.totp.entryconfig("Add")
         self.menu.totp.add_command(label="Show", command=lambda: self.events.publish(Event.MENU_SHOW_TOTP))
-        self.menu.totp.entryconfig("Show", state=tk.DISABLED)
+        self.menu.totp.entryconfig("Show")
         self.menu.totp.add_command(label="Remove", command=lambda: self.events.publish(Event.MENU_REMOVE_TOTP))
-        self.menu.totp.entryconfig("Remove", state=tk.DISABLED)
+        self.menu.totp.entryconfig("Remove")
         self.add_cascade(label="File", menu=self.menu.file)
         self.add_cascade(label="TOTP", menu=self.menu.totp)
-        self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Add", state=tk.NORMAL))
-        self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Show", state=tk.NORMAL))
-        self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.totp.entryconfig("Remove", state=tk.NORMAL))
+        self.entryconfig("TOTP", state=tk.DISABLED)
+        self.events.subscribe(Event.TOTP_LIST, lambda e: self.entryconfig("TOTP", state=tk.NORMAL))
 
 
 class _PasswordFrame(ttk.Frame):
@@ -85,7 +84,7 @@ class _PasswordFrame(ttk.Frame):
         self.events = GlobalEvents.get_event_system()
         self._ui = NestedPropertiesDict()
         self._ui.var.password = StringVar()
-        self._ui.password.label = ttk.Label(self, font=('TkDefaultFont', 20), text="Unlock")
+        self._ui.password.label = ttk.Label(self, font=('TkDefaultFont', 20), text="Password")
         self._ui.password.label.pack(pady=8)
         self._ui.password.entry = ttk.Entry(self, font=('TkDefaultFont', 20), justify=tk.CENTER, show="*", width=12, textvariable=self._ui.var.password)
         self._ui.password.entry.bind('<Return>', lambda e: self.events.publish(Event.PASSWORD, self._ui.var.password.get()))
@@ -114,9 +113,10 @@ class _TotpsFrame(tk.Frame):
         self._ui.totp.token.label.bind('<Button-1>', lambda e: self.events.publish(Event.COPY_TOTP))
         self._ui.totp.progress = ttk.Progressbar(self._ui.totp.frame, maximum=100)
         self._ui.totp.progress.pack(fill=tk.X, padx=8, pady=4)
-
+        self._ui.separator = ttk.Separator(self)
+        self._ui.separator.pack(fill=tk.X, pady=8)
         self._ui.list.frame = tk.Frame(self)
-        self._ui.list.frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self._ui.list.frame.pack(fill=tk.BOTH, expand=True, pady=8)
         self._ui.list.labels = []
 
         self.events.subscribe(Event.TOTP_LIST, self.set_totp_list)
