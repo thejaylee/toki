@@ -13,7 +13,7 @@ from toki.keyfile import CanNotDecrypt, KeyFile
 from toki.ui import UI
 from toki.util import first
 
-DEFAULT_KEYFILE = './.otp.keys'
+DEFAULT_KEYFILE = './.totp.keys'
 
 class Application:
     def __init__(self):
