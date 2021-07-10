@@ -49,7 +49,13 @@ class Application:
                 sleep(0.2)
 
     def handle_on_password(self, password: str, *args, **kwargs) -> None:
-        if self.load_totps_file(password):
+        # change password if keyfile is already loaded
+        if self.keyfile:
+            keyfile = KeyFile(DEFAULT_KEYFILE, password, create_file=True)
+            totps = keyfile.write_keys({name:totp.secret for name, totp in self.totps.items()})
+            self.keyfile = keyfile
+            self.events.publish(Event.SHOW_TOTP_FRAME)
+        elif self.load_totps_file(password):
             self.events.publish(Event.TOTP_LIST, list(self.totps.keys()))
             self.handle_totp_selected(first(self.totps))
 

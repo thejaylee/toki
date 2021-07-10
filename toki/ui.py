@@ -38,15 +38,19 @@ class UI(tk.Tk):
         self.events.subscribe(Event.TOTP_LIST, self.handle_totp_list)
         self.events.subscribe(Event.MENU_ADD_TOTP, self.handle_add_totp)
         self.events.subscribe(Event.SHOW_TOTP_FRAME, self.handle_show_totp_frame)
+        self.events.subscribe(Event.MENU_CHANGE_PASSWORD, self.handle_change_password)
 
-    def handle_totp_list(self, *args, **kwargs):
+    def handle_totp_list(self, *args, **kwargs) -> None:
         self.show_frame(self._ui.frame.totps)
 
-    def handle_add_totp(self, *args, **kwargs):
+    def handle_add_totp(self, *args, **kwargs) -> None:
         self.show_frame(self._ui.frame.add_totp)
 
-    def handle_show_totp_frame(self, *args, **kwargs):
+    def handle_show_totp_frame(self, *args, **kwargs) -> None:
         self.show_frame(self._ui.frame.totps)
+
+    def handle_change_password(self, *args, **kwargs) -> None:
+        self.show_frame(self._ui.frame.password)
 
     def show_frame(self, frame:ttk.Frame):
         for f in self._ui.frame.values():
@@ -64,17 +68,18 @@ class _MenuBar(tk.Menu):
         self.events = GlobalEvents.get_event_system()
         self.menu = NestedPropertiesDict()
         self.menu.file = tk.Menu(self, tearoff=0)
+        self.menu.file.add_command(label="Change Password", command=lambda: self.events.publish(Event.MENU_CHANGE_PASSWORD))
+        self.menu.file.entryconfig("Change Password", state=tk.DISABLED)
+        self.menu.file.add_separator()
         self.menu.file.add_command(label="Exit", command=lambda: self.events.publish(Event.MENU_EXIT))
         self.menu.totp = tk.Menu(self, tearoff=0)
         self.menu.totp.add_command(label="Add", command=lambda: self.events.publish(Event.MENU_ADD_TOTP))
-        self.menu.totp.entryconfig("Add")
         self.menu.totp.add_command(label="Show", command=lambda: self.events.publish(Event.MENU_SHOW_TOTP))
-        self.menu.totp.entryconfig("Show")
         self.menu.totp.add_command(label="Remove", command=lambda: self.events.publish(Event.MENU_REMOVE_TOTP))
-        self.menu.totp.entryconfig("Remove")
         self.add_cascade(label="File", menu=self.menu.file)
         self.add_cascade(label="TOTP", menu=self.menu.totp)
         self.entryconfig("TOTP", state=tk.DISABLED)
+        self.events.subscribe(Event.TOTP_LIST, lambda e: self.menu.file.entryconfig("Change Password", state=tk.NORMAL))
         self.events.subscribe(Event.TOTP_LIST, lambda e: self.entryconfig("TOTP", state=tk.NORMAL))
 
 
@@ -87,9 +92,13 @@ class _PasswordFrame(ttk.Frame):
         self._ui.password.label = ttk.Label(self, font=('TkDefaultFont', 20), text="Password")
         self._ui.password.label.pack(pady=8)
         self._ui.password.entry = ttk.Entry(self, font=('TkDefaultFont', 20), justify=tk.CENTER, show="*", width=12, textvariable=self._ui.var.password)
-        self._ui.password.entry.bind('<Return>', lambda e: self.events.publish(Event.PASSWORD, self._ui.var.password.get()))
+        self._ui.password.entry.bind('<Return>', self._password_entered)
         self._ui.password.entry.pack(padx=8, pady=8)
         self._ui.password.entry.focus_set()
+
+    def _password_entered(self, event: tk.Event) -> None:
+        self.events.publish(Event.PASSWORD, self._ui.var.password.get())
+        self._ui.var.password.set('')
 
     def show(self):
         self.place(relx=0.5, rely=0.45, anchor=tk.CENTER)
