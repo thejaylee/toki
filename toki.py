@@ -1,4 +1,5 @@
 from contextlib import suppress
+from os import path
 from threading import Thread
 from time import sleep, time
 from traceback import print_exc
@@ -75,7 +76,6 @@ class Application:
         self.events.publish(Event.TOTP_LIST, list(self.totps.keys()))
 
     def handle_copy_totp(self, *args, **kwargs) -> None:
-        print(args)
         if not self.current_totp_name:
             return
 
@@ -91,7 +91,7 @@ class Application:
         exit()
 
     def load_totps_file(self, password: str) -> bool:
-        keyfile = KeyFile(DEFAULT_KEYFILE, password, create_file=False)
+        keyfile = KeyFile(DEFAULT_KEYFILE, password, create_file=not path.isfile(DEFAULT_KEYFILE))
         try:
             totps = keyfile.read_keys()
             self.totps = {name:TOTP(totp) for name, totp in totps.items()}
